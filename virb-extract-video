@@ -5,9 +5,11 @@ import datetime
 import json
 import pathlib
 import subprocess
+import shutil
 from typing import *
 
 import click
+from tqdm import tqdm
 
 
 @click.command()
@@ -17,19 +19,48 @@ def main(base_dir: str, output_dir: str) -> None:
     """
     Extract video snippets from Virb camera
     """
-    basepath = pathlib.Path(base_dir)
-    videos_and_images = get_videos_and_images(basepath)
-    print(videos_and_images)
-    for video, images in sorted(videos_and_images.items()):
+    base_path = pathlib.Path(base_dir)
+    output_path = pathlib.Path(output_dir).expanduser()
+
+    stage_copy_images(base_path, output_path)
+    stage_extract_videos(base_path, output_path)
+
+
+def stage_extract_videos(base_path: pathlib.Path, output_path: pathlib.Path) -> None:
+    print('Finding video segments …')
+    videos_and_images = get_videos_and_images(base_path)
+    cuts = []
+    for video, images in tqdm(sorted(videos_and_images.items())):
         ranges = get_ranges(video, images)
-        print(ranges)
         for range in ranges:
-            cut_video(video, range, pathlib.Path(output_dir).expanduser())
+            cuts.append((video, range))
+    print('Extracting video segments …')
+    for video, range in tqdm(cuts):
+        cut_video(video, range, output_path)
+
+
+def stage_copy_images(base_path: pathlib.Path, output_path: pathlib.Path) -> None:
+    print('Copying images …')
+    pictures = [
+        file
+        for directory in sorted(base_path.iterdir())
+        for file in sorted(directory.iterdir())
+        if file.suffix == '.JPG'
+    ]
+    for picture in tqdm(pictures):
+        mtime = get_mtime(picture)
+        filename = make_filename(mtime, 'jpg')
+        picture_destination = output_path / filename
+        shutil.copy(picture, picture_destination)
+
+
+def make_filename(time, suffix) -> str:
+    return f"Fahrradkamera {time.isoformat()}.{suffix}"
 
 
 def cut_video(video, range, output_dir: pathlib.Path) -> None:
     image_mtime, start, duration = range
-    output_path = output_dir / f"Fahrradkamera {image_mtime.isoformat()}.mp4"
+    output_path = output_dir / make_filename(image_mtime, "mp4")
     command = [
         "ffmpeg",
         "-ss",
@@ -46,9 +77,11 @@ def cut_video(video, range, output_dir: pathlib.Path) -> None:
         "1",
         str(output_path),
     ]
-    print(command)
     if not output_path.is_file():
-        subprocess.run(command, check=True)
+        try:
+            output = subprocess.run(command, check=True, capture_output=True)
+        except subprocess.CalledProcessError as e:
+            print(e)
 
 
 def get_videos_and_images(path: pathlib.Path) -> Dict[pathlib.Path, List[pathlib.Path]]:
@@ -70,9 +103,6 @@ def get_ranges(video: pathlib.Path, images: List[pathlib.Path]):
     video_duration = get_video_duration(video)
     video_start = video_end - video_duration
     images_mtime = [get_mtime(image) for image in images]
-    print(video)
-    print(video_start, video_end)
-    print(images_mtime)
     ranges = []
     for image_mtime in images_mtime:
         range_start = image_mtime - datetime.timedelta(seconds=30)
