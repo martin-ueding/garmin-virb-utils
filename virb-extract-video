@@ -59,8 +59,8 @@ def make_filename(time, suffix) -> str:
 
 
 def cut_video(video, range, output_dir: pathlib.Path) -> None:
-    image_mtime, start, duration = range
-    output_path = output_dir / make_filename(image_mtime, "mp4")
+    image_mtime, range_start, start, duration = range
+    output_path = output_dir / make_filename(range_start, "mp4")
     command = [
         "ffmpeg",
         "-ss",
@@ -112,7 +112,7 @@ def get_ranges(video: pathlib.Path, images: List[pathlib.Path]):
 
         time_start = str(range_start - video_start)
         time_duration = str(range_end - range_start)
-        ranges.append((range_end, time_start, time_duration))
+        ranges.append((range_end, range_start, time_start, time_duration))
     return ranges
 
 
