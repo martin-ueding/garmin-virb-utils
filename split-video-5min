@@ -1,0 +1,25 @@
+#!/bin/bash
+# Copyright © 2020 Martin Ueding <dev@martin-ueding.de>
+
+# https://unix.stackexchange.com/questions/1670/how-can-i-use-ffmpeg-to-split-mpeg-video-into-10-minute-chunks
+
+set -e
+set -u
+
+for path in "$HOME/Videos/2_Fertig/"*; do
+    basename="${path##*/}"
+    base="${basename%.*}"
+    nice \
+        ionice -c Idle \
+        ffmpeg \
+        -threads 1 \
+        -i "$path" \
+        -c copy \
+        -map 0 \
+        -segment_time 00:05:00 \
+        -f segment \
+        -reset_timestamps 1 \
+        -threads 1 \
+        "$HOME/Videos/3_Upload/${base}-%03d.mp4"
+    rm "$path"
+done
